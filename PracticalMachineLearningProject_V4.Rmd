@@ -1,0 +1,288 @@
+---
+title: "Practical Machine Learning Project"
+author: "Marijus B"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Libraries
+```{r}
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(gbm)
+library(data.table)
+library(kernlab)
+library(ggplot2)
+library(MASS)
+library(tidyverse)
+library(data.table)
+
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Project
+
+The main goal of the project is predict the manner in which exercises were performed by six participants and it is labeled as "classe" in the training data set.
+
+Data for the analysis consists of training and test data sets.
+
+Data will be tested  with 4 different models : *Classification Tree* , *Random Forest* , *Gradient Boosting Method* and *Linear Discriminant Analysis*.
+
+WLE dataset for this project is a courtesy of: Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+## Getting Data
+
+Data is obtained from: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#### Training Data
+```{r}
+trainingData <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"),header=TRUE)
+table(trainingData$classe)
+#str(trainingData)
+dim(trainingData)
+#summary(trainingData)
+```
+
+
+#### Testing Data
+```{r}
+testingData <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"),header=TRUE)
+table(testingData$classe)
+#str(testingData)
+dim(testingData)
+#summary(testingData)
+```
+
+## Cleaning Data Sets
+
+#### Removing variables from the data sets that are close to zero:
+```{r}
+NSV <- nearZeroVar(trainingData,saveMetrics=TRUE)
+NSV
+nsv <- nearZeroVar(trainingData)
+nsv
+training <- trainingData[, -nsv]
+testing  <- testingData[, -nsv]
+dim(training)
+dim(testing)
+```
+
+#### Removing missing values, NAs from data sets:
+```{r}
+indColToRemove <- which(colSums(is.na(trainingData) |trainingData=="")>0.8*dim(trainingData)[1]) 
+training <- trainingData[,-indColToRemove]
+str(training)
+dim(training)
+```
+
+```{r}
+indColToRemove <- which(colSums(is.na(testingData) |testingData=="")>0.8*dim(testingData)[1]) 
+testing <- testingData[,-indColToRemove]
+str(testing)
+dim(testing)
+```
+
+#### Removing variables from data sets with no significance:
+```{r}
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+```
+
+```{r}
+dim(training)
+dim(testing)
+```
+
+##### After removing variables that has no significant role in modeling and NAs split training data set (partition) into 75% and 25% as Training and Testing data sets respectivelly: 
+```{r}
+set.seed(1234)
+inTrain <- createDataPartition(y=training$classe,p=0.75, list=FALSE)
+Training <- training[inTrain,]
+Testing <- training[-inTrain,]
+```
+
+##### New dimensions of data sets:
+```{r}
+dim(Training)
+dim(Testing)
+```
+
+#### Correlation matrix  of columns to map correleted predictors:
+```{r}
+Corr_Matrix <- cor(Training[, -53])
+corrplot(Corr_Matrix, order = "FPC", method = "color", 
+         tl.cex = 0.6, tl.col = rgb(0, 0, 0))
+```
+
+## Testing Models
+
+##### This data analysis will test four models: *Classification Tree* , *Random Forest*, *Gradient Boosting Method*, *Linear Discriminant Analysis*.
+
+### Random Forest model:
+```{r}
+set.seed(4567)
+
+trControl <- trainControl(method="cv", number=10)
+mod_rf <- train(classe ~ ., data = Training, method = "rf", trControl=trControl, verbose=FALSE, ntree = 200)
+```
+
+```{}
+print(mod_rf)
+```
+
+```{r}
+plot(mod_rf,col="red", main="Random Forest Model vs Number of Predictors")
+```
+
+#### Validating Random Forest model:
+```{r}
+pred_rf <- predict(mod_rf, Testing)
+```
+
+```{r}
+ConfMatRF <- confusionMatrix(pred_rf, Testing$classe)
+ConfMatRF
+```
+
+Confusion matrix and model accuracy
+```{r}
+ConfMatRF$table
+```
+
+#### Accuracy of the Random Forest model:
+```{r}
+ConfMatRF$overall[1]
+```
+##### Accuracy of the Random Forest model is high, 99.4% which is most likely due to overfitting.
+
+### Linear Discriminant Analysis Model
+```{r}
+mod_lda <- lda(classe~., data = Training)
+plot(mod_lda)
+```
+
+```{r}
+lda.data <- cbind(Training, predict(mod_lda)$x)
+ggplot(lda.data, aes(LD1, LD2)) +
+  geom_point(aes(color = classe))
+```
+
+#### Validating model:
+```{r}
+pred_lda <- predict(mod_lda, Testing)
+```
+
+#### Accuracy of Linear Discriminant Analysis model:
+```{r}
+mean(pred_lda$class==Testing$classe)
+```
+##### Accuracy of model is around 70%.
+
+#### Misclasification rate:
+```{r}
+lda.pred = (pred_lda$class)
+lda.error = mean(Testing$classe != lda.pred)
+lda.error
+```
+
+### Gradient Boosting Method 
+```{r}
+Model_GBM <- train(classe~., data=Training, method="gbm", trControl=trControl, verbose=FALSE)
+```
+
+```{r}
+print(Model_GBM)
+```
+
+```{r}
+plot(Model_GBM)
+```
+
+#### Validating the boosting method model:
+```{r}
+Model_GBMpred <- predict(Model_GBM,newdata=Testing)
+
+ConfMatGBM <- confusionMatrix(Model_GBMpred, Testing$classe)
+ConfMatGBM$table
+```
+
+#### Accuracy of the model:
+```{r}
+ConfMatGBM$overall[1]
+```
+##### Accuracy of the Gradient Boosting Method is high, around 96.4%.
+
+
+### Classification Tree Model
+```{r}
+trControl <- trainControl(method="cv", number=10)
+Model_ClassTree <- train(classe~., data=Training, method="rpart", trControl=trControl)
+```
+
+```{r}
+Model_ClassTree$finalModel
+```
+
+```{r}
+plot(Model_ClassTree$finalModel, uniform=TRUE, 
+      main="Classification Tree")
+text(Model_ClassTree$finalModel, use.n=TRUE, all=TRUE, cex=.7)
+```
+
+```{r}
+print(Model_ClassTree)
+fancyRpartPlot(Model_ClassTree$finalModel)
+```
+
+#### Validating Classification Tree model using Testing data set:
+```{r}
+Model_ClassTreePred <- predict(Model_ClassTree,newdata=Testing)
+```
+
+```{r}
+plot(Model_ClassTreePred, main="Classification Tree Model Prediction" , col="yellow")
+```
+
+```{r}
+confMatClassTree <- confusionMatrix(Model_ClassTreePred, Testing$classe)
+
+confMatClassTree
+```
+
+```{r}
+confMatClassTree$table
+```
+
+#### Accuracy of the Classification Tree model:
+```{r}
+confMatClassTree$overall[1]
+```
+##### Accuracy of Classification Tree model is around 50% which is very low so this model will not predict well
+
+## Conclusions
+
+##### The most accurate results were using *Random Forests model*.
+
+#### Validating Random Forests model with test dataset:
+```{r}
+FinalPred <- predict(mod_rf,newdata=testing)
+table(FinalPred)
+print(FinalPred)
+```
+
+
+
